@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import {
   Box,
   Flex,
@@ -10,81 +10,40 @@ import {
   Textarea,
   Replybox,
 } from '@/genie-ui'
-import { Select, SelectItem } from '@/genie-ui/components/select'
-import DocDetailSlider, { DocumentType } from '@/genie-ui/components/docDetailSlider'
 import {
   Wand2,
   Paperclip,
   ArrowUp,
   FileText,
   Plus,
-  X,
 } from 'lucide-react'
-import { MESSAGE_IDS } from '@/constants/messageIds'
-import { FormArtifactPreview } from '@/components/chat/FormArtifactPreview'
-import { FormArtifactPanel } from '@/components/chat/FormArtifactPanel'
-import { FormArtifactChip } from '@/components/chat/FormArtifactChip'
-import { FloatingChatInput } from '@/components/chat/FloatingChatInput'
-import { DocumentForm } from '@/components/DocumentForm'
+import { handleIntentStep } from '@/agent/intentStep'
 
 // Message type definition
 type Message = {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: number
 }
 
-// Artifact state type
-type ArtifactState = 'preview' | 'open' | 'pinned' | 'closed'
-
 export default function Home() {
   const [prompt, setPrompt] = useState('')
-  const [initialUserIntent, setInitialUserIntent] = useState('') // Store original user input
-  const [workDescription, setWorkDescription] = useState('') // For the "Tell us about this work" section
   const [mode, setMode] = useState<'landing' | 'chat' | 'document'>('landing')
 
   // Chat-related state
   const [messages, setMessages] = useState<Message[]>([])
-  const [artifactState, setArtifactState] = useState<ArtifactState>('closed')
   const [chatTitle, setChatTitle] = useState('Chat')
-  const [showChatPreview, setShowChatPreview] = useState(false)
+  const [isThinking, setIsThinking] = useState(false)
 
   // Sequential message counter for dynamic IDs
   const [messageCounter, setMessageCounter] = useState(0)
-  const [selectedExistingInputs, setSelectedExistingInputs] = useState<Record<string, string>>({})
   const [workbenchOpen, setWorkbenchOpen] = useState(false)
-  const [selectedDocs, setSelectedDocs] = useState<Record<string, boolean>>({})
-  const [suggestedDocs, setSuggestedDocs] = useState<string[]>([])
-  const [createDocs, setCreateDocs] = useState<string[]>([])
-  const [selectedClauses, setSelectedClauses] = useState<Record<string, boolean>>({})
-  const [clauseDetailsText, setClauseDetailsText] = useState<Record<string, string>>({})
-  const [lengthValue, setLengthValue] = useState(50)
-  const [favourabilityValue, setFavourabilityValue] = useState(50)
-  const [toneValue, setToneValue] = useState(50)
-  const [documentType, setDocumentType] = useState<DocumentType>('customised')
-  const [governingLaw, setGoverningLaw] = useState('english-law')
-  const [language, setLanguage] = useState('english')
-  const [customClauses, setCustomClauses] = useState<Record<string, Array<{name: string, details: string, id: string}>>>({})
   const [activeTab, setActiveTab] = useState<'documents' | 'context' | 'rules'>('documents')
-  const [expandedDocs, setExpandedDocs] = useState<Record<string, boolean>>({})
-  const [generatedDocs, setGeneratedDocs] = useState<Record<string, boolean>>({})
-  const [loadingDocs, setLoadingDocs] = useState<Record<string, boolean>>({})
-  const [currentDocIndex, setCurrentDocIndex] = useState(0)
-
-  // Set first document as expanded by default when createDocs changes
-  useEffect(() => {
-    if (createDocs.length > 0) {
-      setExpandedDocs(prev => ({
-        ...prev,
-        [createDocs[0]]: true
-      }))
-    }
-  }, [createDocs])
 
   // Message helper functions
-  const addMessage = useCallback((role: 'user' | 'assistant', content: string, customId?: string) => {
-    const id = customId || `${role === 'user' ? MESSAGE_IDS.USER_MESSAGE_PREFIX : MESSAGE_IDS.ASSISTANT_MESSAGE_PREFIX}${messageCounter}`
+  const addMessage = useCallback((role: 'user' | 'assistant' | 'system', content: string) => {
+    const id = `${role}-${messageCounter}`
     const newMessage: Message = {
       id,
       role,
@@ -100,39 +59,8 @@ export default function Home() {
       return [...prev, newMessage]
     })
 
-    if (!customId) {
-      setMessageCounter(prev => prev + 1)
-    }
+    setMessageCounter(prev => prev + 1)
   }, [messageCounter])
-
-  const findMessageById = useCallback((messageId: string): Message | undefined => {
-    return messages.find(msg => msg.id === messageId)
-  }, [messages])
-
-  const updateMessageById = useCallback((messageId: string, newContent: string) => {
-    setMessages(prev =>
-      prev.map(msg =>
-        msg.id === messageId ? { ...msg, content: newContent } : msg
-      )
-    )
-  }, [])
-
-  // Calculate selected document count
-  const selectedDocCount = Object.values(selectedDocs).filter(Boolean).length
-
-  // Handle artifact state changes
-  const openArtifact = () => setArtifactState('open')
-  const minimizeArtifact = () => setArtifactState('pinned')
-  const closeArtifact = () => setArtifactState('closed')
-
-  // Handle "Create Form" button
-  const handleCreateForm = () => {
-    // Check if preview message already exists
-    if (!findMessageById(MESSAGE_IDS.FORM_ARTIFACT_PREVIEW)) {
-      addMessage('assistant', 'Form artifact preview', MESSAGE_IDS.FORM_ARTIFACT_PREVIEW)
-    }
-    setArtifactState('preview')
-  }
 
   // Generate chat title from user intent
   const generateChatTitle = (userMessage: string): string => {
@@ -182,7 +110,7 @@ export default function Home() {
       intent = userMessage.split(' ').slice(0, 6).join(' ').toLowerCase()
     }
 
-    return `Sure, I can get you started with all of the documents you might need to ${intent}. Let me show you the form to configure your documents.`
+    return `Sure, I can help you with ${intent}. How can I assist you today?`
   }
 
   // Handle message sending
@@ -194,339 +122,18 @@ export default function Home() {
       addMessage('user', messageContent)
     }
 
-    // If artifact is open, minimize it
-    if (artifactState === 'open') {
-      setArtifactState('pinned')
-    }
-
     // If this is the first message from landing page (skipUserMessage = true),
-    // provide a custom welcome response and show the form artifact
+    // use the intent step workflow
     if (skipUserMessage) {
-      const welcomeResponse = generateWelcomeResponse(messageContent)
-      
-      // Add a short delay before showing the assistant response (typical system message delay)
-      setTimeout(() => {
-        addMessage('assistant', welcomeResponse)
-        
-        // Add another short delay before showing the form artifact
-        setTimeout(() => {
-          if (!findMessageById(MESSAGE_IDS.FORM_ARTIFACT_PREVIEW)) {
-            addMessage('assistant', 'Form artifact preview', MESSAGE_IDS.FORM_ARTIFACT_PREVIEW)
-          }
-          setArtifactState('preview')
-        }, 500) // 0.5 second delay for the artifact
-      }, 800) // 0.8 second delay for the assistant response
-      
+      // Run the intent detection workflow
+      await handleIntentStep(messageContent, addMessage, setIsThinking)
       return
     }
 
-    // For subsequent messages, use the API
-    try {
-      const currentMessages = [...messages, { role: 'user', content: messageContent }]
-
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: currentMessages
-        })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        addMessage('assistant', data.content)
-      } else {
-        addMessage('assistant', 'Sorry, I encountered an error. Please try again.')
-      }
-    } catch (error) {
-      addMessage('assistant', 'Sorry, I encountered an error. Please try again.')
-    }
+    // For subsequent messages, also run intent step
+    await handleIntentStep(messageContent, addMessage, setIsThinking)
   }
 
-  // Generate dummy content for different document types
-  const generateDummyContent = (docType: string) => {
-    const docTypeLower = docType.toLowerCase()
-    
-    if (docTypeLower.includes('employment') || docTypeLower.includes('contract')) {
-      return `EMPLOYMENT AGREEMENT
-
-This Employment Agreement is entered into between [COMPANY NAME] and [EMPLOYEE NAME].
-
-1. POSITION AND DUTIES
-Employee shall serve as [JOB TITLE] and perform duties including:
-- [DUTY 1]
-- [DUTY 2]
-- [DUTY 3]
-
-2. COMPENSATION
-Base salary: $[AMOUNT] per year
-Benefits: Health insurance, dental, vision
-Vacation: [NUMBER] days per year
-
-3. EMPLOYMENT TERMS
-Start date: [DATE]
-Employment is at-will and may be terminated by either party
-
-4. CONFIDENTIALITY
-Employee agrees to maintain confidentiality of company information
-
-5. GOVERNING LAW
-This agreement shall be governed by [STATE] law.
-
-[COMPANY NAME]
-By: _________________
-Name: [NAME]
-Title: [TITLE]
-
-EMPLOYEE
-By: _________________
-Name: [EMPLOYEE NAME]`
-    }
-    
-    if (docTypeLower.includes('offer')) {
-      return `OFFER LETTER
-
-Dear [CANDIDATE NAME],
-
-We are pleased to offer you the position of [JOB TITLE] at [COMPANY NAME].
-
-POSITION DETAILS:
-- Job Title: [JOB TITLE]
-- Start Date: [DATE]
-- Salary: $[AMOUNT] per year
-- Benefits: Health, dental, vision insurance
-- Vacation: [NUMBER] days per year
-
-REPORTING:
-You will report to [MANAGER NAME], [MANAGER TITLE].
-
-NEXT STEPS:
-Please sign and return this letter by [DATE] to accept this offer.
-
-We look forward to welcoming you to the team!
-
-Sincerely,
-[HIRING MANAGER NAME]
-[TITLE]
-[COMPANY NAME]
-
-ACCEPTANCE:
-I accept this offer of employment.
-
-Signature: _________________
-Date: _________________`
-    }
-    
-    if (docTypeLower.includes('nda') || docTypeLower.includes('disclosure')) {
-      return `MUTUAL NON-DISCLOSURE AGREEMENT
-
-This Mutual Non-Disclosure Agreement ("Agreement") is entered into on [DATE] by and between:
-
-Party 1: [COMPANY NAME]
-Address: [COMPANY ADDRESS]
-
-Party 2: [COUNTERPARTY NAME]  
-Address: [COUNTERPARTY ADDRESS]
-
-1. Governing Law. This Agreement is governed by the laws of England and Wales.
-
-2. Jurisdiction. The parties submit to the exclusive jurisdiction of the courts of England and Wales.
-
-3. Liability Cap. The total liability shall not exceed 475% of the fees paid in the 12 months preceding the claim.
-
-4. Confidentiality Duration. The confidentiality obligations survive for two (2) years from disclosure.`
-    }
-
-    // Default content for any other document type
-    return `${docType.toUpperCase()}
-
-This document contains the terms and conditions for [PURPOSE].
-
-1. PARTIES
-This agreement is between [PARTY 1] and [PARTY 2].
-
-2. TERMS
-The following terms apply:
-- [TERM 1]
-- [TERM 2]
-- [TERM 3]
-
-3. EFFECTIVE DATE
-This agreement is effective as of [DATE].
-
-4. SIGNATURES
-Both parties agree to the terms set forth above.
-
-[PARTY 1]
-By: _________________
-
-[PARTY 2]
-By: _________________`
-  }
-
-  // Helper function to add a new custom clause
-  const addCustomClause = (docType: string) => {
-    const newId = `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    setCustomClauses(prev => ({
-      ...prev,
-      [docType]: [
-        ...(prev[docType] || []),
-        { name: '', details: '', id: newId }
-      ]
-    }))
-  }
-
-  // Helper function to update custom clause name
-  const updateCustomClauseName = (docType: string, clauseId: string, name: string) => {
-    setCustomClauses(prev => ({
-      ...prev,
-      [docType]: (prev[docType] || []).map(clause => 
-        clause.id === clauseId ? { ...clause, name } : clause
-      )
-    }))
-  }
-
-  // Helper function to update custom clause details
-  const updateCustomClauseDetails = (docType: string, clauseId: string, details: string) => {
-    setCustomClauses(prev => ({
-      ...prev,
-      [docType]: (prev[docType] || []).map(clause => 
-        clause.id === clauseId ? { ...clause, details } : clause
-      )
-    }))
-  }
-
-  // Helper function to remove a custom clause
-  const removeCustomClause = (docType: string, clauseId: string) => {
-    setCustomClauses(prev => ({
-      ...prev,
-      [docType]: (prev[docType] || []).filter(clause => clause.id !== clauseId)
-    }))
-  }
-
-  // Helper function to trigger document generation
-  const handleGenerateDocument = (docType: string) => {
-    setLoadingDocs(prev => ({ ...prev, [docType]: true }))
-    // Simulate loading time
-    setTimeout(() => {
-      setLoadingDocs(prev => ({ ...prev, [docType]: false }))
-      setGeneratedDocs(prev => ({ ...prev, [docType]: true }))
-    }, 1500) // 1.5 second loading time
-  }
-
-  // Generate key clauses for each document type
-  const generateKeyClauses = (docType: string): Array<{name: string, explainer: string}> => {
-    switch(docType) {
-      case 'Employment Agreement':
-        return [
-          { name: 'Termination and notice periods', explainer: 'Protects both parties with clear exit terms and adequate notice requirements.' },
-          { name: 'Intellectual property assignment', explainer: 'Ensures all work-related IP belongs to the company, preventing future disputes.' },
-          { name: 'Non-compete and non-solicitation', explainer: 'Prevents employees from competing or poaching clients/staff after leaving.' }
-        ]
-      case 'Investment Agreement':
-        return [
-          { name: 'Liquidation preferences', explainer: 'Determines payout order and amounts if the company is sold or liquidated.' },
-          { name: 'Anti-dilution protection', explainer: 'Protects investors from share value reduction in future funding rounds.' },
-          { name: 'Board representation rights', explainer: 'Gives investors governance control proportional to their investment stake.' }
-        ]
-      case 'Service Agreement':
-        return [
-          { name: 'Service level agreements', explainer: 'Defines performance standards and penalties for subpar delivery.' },
-          { name: 'Intellectual property ownership', explainer: 'Clarifies who owns work product and any innovations created.' },
-          { name: 'Limitation of liability', explainer: 'Caps financial exposure for both parties in case of disputes or damages.' }
-        ]
-      case 'NDA':
-        return [
-          { name: 'Definition of confidential information', explainer: 'Clearly defines what information is protected under the agreement.' },
-          { name: 'Permitted disclosures and exceptions', explainer: 'Specifies when confidential information can legally be shared.' },
-          { name: 'Return of confidential materials', explainer: 'Requires return or destruction of confidential information when relationship ends.' }
-        ]
-      default:
-        return [
-          { name: 'Term and termination', explainer: 'Establishes duration and conditions for ending the agreement.' },
-          { name: 'Payment and compensation', explainer: 'Defines all financial obligations and payment schedules.' },
-          { name: 'Dispute resolution', explainer: 'Sets process for handling disagreements without costly litigation.' }
-        ]
-    }
-  }
-
-  // Generate suggested documents based on user prompt
-  const generateSuggestedDocs = (userPrompt: string): string[] => {
-    const lowerPrompt = userPrompt.toLowerCase()
-    
-    if (lowerPrompt.includes('hire') || lowerPrompt.includes('employ') || lowerPrompt.includes('job')) {
-      return ['Employment Agreement', 'Offer Letter', 'NDA', 'IP Assignment Agreement']
-    }
-    if (lowerPrompt.includes('invest') || lowerPrompt.includes('funding') || lowerPrompt.includes('capital')) {
-      return ['Investment Agreement', 'Shareholders Agreement', 'Term Sheet', 'NDA']
-    }
-    if (lowerPrompt.includes('service') || lowerPrompt.includes('contract') || lowerPrompt.includes('client')) {
-      return ['Service Agreement', 'Statement of Work', 'NDA', 'Terms & Conditions']
-    }
-    if (lowerPrompt.includes('partner') || lowerPrompt.includes('joint venture')) {
-      return ['Partnership Agreement', 'Joint Venture Agreement', 'NDA', 'Operating Agreement']
-    }
-    if (lowerPrompt.includes('supplier') || lowerPrompt.includes('vendor') || lowerPrompt.includes('purchase')) {
-      return ['Supplier Agreement', 'Purchase Agreement', 'Terms & Conditions', 'NDA']
-    }
-    
-    // Default suggestions
-    return ['Employment Agreement', 'Service Agreement', 'NDA', 'Partnership Agreement']
-  }
-
-  // Generate specific detail questions based on selected documents
-  const generateDetailQuestions = (): string[] => {
-    const chosen = Object.keys(selectedDocs).filter(k => selectedDocs[k])
-    if (chosen.length === 0) return []
-    
-    // For employment agreements
-    if (chosen.includes('Employment Agreement') || chosen.includes('Offer Letter')) {
-      return [
-        'What are the specific role responsibilities and reporting structure?',
-        'What\'s the compensation package (salary, benefits, equity, bonuses)?',
-        'What are the working arrangements (remote, hybrid, location requirements)?',
-        'Which risks are most important to protect against?'
-      ]
-    }
-    
-    // For investment agreements
-    if (chosen.includes('Investment Agreement') || chosen.includes('Term Sheet')) {
-      return [
-        'What\'s the funding amount and valuation structure?',
-        'What are the investor rights and board representation?',
-        'What are the liquidation and anti-dilution preferences?',
-        'What are the key milestone and reporting requirements?'
-      ]
-    }
-    
-    // For service agreements
-    if (chosen.includes('Service Agreement') || chosen.includes('Statement of Work')) {
-      return [
-        'What are the specific services and deliverables?',
-        'What\'s the payment structure and schedule?',
-        'What are the performance standards and SLAs?',
-        'What are the termination and IP ownership terms?'
-      ]
-    }
-    
-    // For NDAs
-    if (chosen.includes('NDA')) {
-      return [
-        'What information needs to be protected?',
-        'Is this mutual or one-way protection?',
-        'What\'s the confidentiality period and scope?',
-        'What are the permitted disclosure exceptions?'
-      ]
-    }
-    
-    // Default questions for other document types
-    return [
-      'What are the specific terms and scope of work?',
-      'What\'s the payment or compensation structure?',
-      'What are the key responsibilities and obligations?',
-      'What are the termination and dispute resolution terms?'
-    ]
-  }
 
   return (
     <Box className="min-h-screen bg-white">
@@ -563,17 +170,11 @@ By: _________________`
                               if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault()
                                 if (prompt.trim()) {
-                                  // Store the initial user intent for the form
-                                  setInitialUserIntent(prompt)
-                                  setWorkDescription(prompt) // Initialize work description with user intent
                                   // Add initial user message and get AI response
                                   addMessage('user', prompt)
                                   // Set chat title based on user intent
                                   setChatTitle(generateChatTitle(prompt))
                                   handleSendMessage(prompt, true) // Skip adding user message again
-                                  // Generate suggested documents for the form
-                                  const suggested = generateSuggestedDocs(prompt)
-                                  setSuggestedDocs(suggested)
                                   setMode('chat')
                                   setWorkbenchOpen(true)
                                   // Clear the prompt since it's now in chat
@@ -607,9 +208,6 @@ By: _________________`
                                   // Set chat title based on user intent
                                   setChatTitle(generateChatTitle(prompt))
                                   handleSendMessage(prompt, true) // Skip adding user message again
-                                  // Generate suggested documents for the form
-                                  const suggested = generateSuggestedDocs(prompt)
-                                  setSuggestedDocs(suggested)
                                   setMode('chat')
                                   setWorkbenchOpen(true)
                                   // Clear the prompt since it's now in chat
@@ -681,223 +279,99 @@ By: _________________`
                 </Box>
               </Box>
 
-              {/* Chat interface with artifact integration */}
+              {/* Chat interface */}
               <Box className="flex flex-col bg-white h-screen">
                 <Box className="h-full flex justify-center">
-                  <Box className={`w-full flex flex-col h-full relative ${artifactState === 'open' ? '' : 'max-w-4xl'}`}>
-                    {/* Chat header with Create Form button - hidden when artifact is open */}
-                    {artifactState !== 'open' && (
-                      <Box className="p-4 bg-white border-b border-gray-200">
-                        <Flex align="center" justify="between">
-                          <Text size="lg" className="font-semibold text-gray-900">{chatTitle}</Text>
-                          <Button
-                            variant="bordered"
-                            size="sm"
-                            className="border-purple-200 text-purple-700 hover:bg-purple-50"
-                            onPress={handleCreateForm}
-                          >
-                            Create Form
-                          </Button>
-                        </Flex>
-                      </Box>
-                    )}
+                  <Box className="w-full flex flex-col h-full relative max-w-4xl">
+                    {/* Chat header */}
+                    <Box className="p-4 bg-white border-b border-gray-200">
+                      <Flex align="center" justify="between">
+                        <Text size="lg" className="font-semibold text-gray-900">{chatTitle}</Text>
+                      </Flex>
+                    </Box>
 
                     <div className="flex-1 flex flex-col min-h-0 relative">
-                      {/* Artifact chip when pinned */}
-                      {artifactState === 'pinned' && (
-                        <FormArtifactChip
-                          selectedDocCount={selectedDocCount}
-                          onOpen={openArtifact}
-                          onClose={closeArtifact}
-                        />
-                      )}
+                      {/* Chat messages */}
+                      <Box className="flex-1 overflow-y-auto p-4 min-h-0">
+                        <VStack spacing={6} align="start" className="w-full">
+                          {messages.map((message, index) => (
+                            <Box key={message.id} className="w-full">
+                              <Box className={`w-full flex gap-3 ${message.role === 'user' ? 'flex-row-reverse justify-start' : 'justify-start'}`}>
+                                {/* Avatar/Icon area */}
+                                <Box className="flex-shrink-0">
+                                  {message.role === 'user' ? (
+                                    <Box className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
+                                      <Text size="sm" className="text-white font-medium">R</Text>
+                                    </Box>
+                                  ) : (
+                                    <Box className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                                      <Wand2 className="w-4 h-4 text-purple-600" />
+                                    </Box>
+                                  )}
+                                </Box>
 
-                      {/* Artifact panel when open - takes most of the space, hidden during chat preview */}
-                      {artifactState === 'open' && !showChatPreview ? (
-                        <Box className="flex-1 min-h-0">
-                          <FormArtifactPanel
-                            onMinimize={minimizeArtifact}
-                            onSelectedDocsChange={(count) => {
-                              // Update preview message content if needed
-                              if (findMessageById(MESSAGE_IDS.FORM_ARTIFACT_PREVIEW)) {
-                                updateMessageById(
-                                  MESSAGE_IDS.FORM_ARTIFACT_PREVIEW,
-                                  count > 0 ? `Creating ${count} documents` : 'Form artifact preview'
-                                )
-                              }
-                            }}
-                            currentDocIndex={currentDocIndex}
-                            setCurrentDocIndex={setCurrentDocIndex}
-                            selectedDocs={selectedDocs}
-                          >
-                            <Box className="relative h-full">
-                              <DocumentForm
-                                prompt={prompt}
-                                setPrompt={setPrompt}
-                                initialUserIntent={initialUserIntent}
-                                workDescription={workDescription}
-                                setWorkDescription={setWorkDescription}
-                                selectedExistingInputs={selectedExistingInputs}
-                                setSelectedExistingInputs={setSelectedExistingInputs}
-                                selectedDocs={selectedDocs}
-                                setSelectedDocs={setSelectedDocs}
-                                suggestedDocs={suggestedDocs}
-                                createDocs={createDocs}
-                                setCreateDocs={setCreateDocs}
-                                selectedClauses={selectedClauses}
-                                setSelectedClauses={setSelectedClauses}
-                                clauseDetailsText={clauseDetailsText}
-                                setClauseDetailsText={setClauseDetailsText}
-                                lengthValue={lengthValue}
-                                setLengthValue={setLengthValue}
-                                favourabilityValue={favourabilityValue}
-                                setFavourabilityValue={setFavourabilityValue}
-                                toneValue={toneValue}
-                                setToneValue={setToneValue}
-                                documentType={documentType}
-                                setDocumentType={setDocumentType}
-                                governingLaw={governingLaw}
-                                setGoverningLaw={setGoverningLaw}
-                                language={language}
-                                setLanguage={setLanguage}
-                                customClauses={customClauses}
-                                setCustomClauses={setCustomClauses}
-                                addCustomClause={addCustomClause}
-                                updateCustomClauseName={updateCustomClauseName}
-                                updateCustomClauseDetails={updateCustomClauseDetails}
-                                removeCustomClause={removeCustomClause}
-                                generateKeyClauses={generateKeyClauses}
-                                generateDetailQuestions={generateDetailQuestions}
-                                onGenerateDocument={handleGenerateDocument}
-                                generatedDocs={generatedDocs}
-                                currentDocIndex={currentDocIndex}
-                                setCurrentDocIndex={setCurrentDocIndex}
-                              />
-                            </Box>
-                          </FormArtifactPanel>
-                        </Box>
-                      ) : null}
-
-                      {/* Floating chat button - positioned relative to central panel */}
-                      {artifactState === 'open' && (
-                        <FloatingChatInput
-                          onCommitToChat={() => setArtifactState('pinned')}
-                        />
-                      )}
-
-                      {/* Chat messages - visible when artifact is not open OR during chat preview */}
-                      {(artifactState !== 'open' || showChatPreview) && (
-                        <Box 
-                          className="flex-1 overflow-y-auto p-4 min-h-0"
-                          data-chat-preview-area
-                          onMouseLeave={() => {
-                            if (showChatPreview && artifactState === 'open') {
-                              // Hide preview when leaving chat area (back to form)
-                              setTimeout(() => {
-                                // Double-check we're not hovering over button or input
-                                const hoveredElement = document.querySelector(':hover')
-                                const isHoveringChatArea = hoveredElement?.closest('[data-chat-preview-area]') || 
-                                                          hoveredElement?.closest('[data-floating-chat-button]')
-                                if (!isHoveringChatArea) {
-                                  setShowChatPreview(false)
-                                }
-                              }, 150)
-                            }
-                          }}
-                        >
-                          <VStack spacing={6} align="start" className="w-full">
-                            {messages.map((message) => (
-                              <Box key={message.id} className="w-full">
-                                {message.id === MESSAGE_IDS.FORM_ARTIFACT_PREVIEW ? (
-                                  <FormArtifactPreview
-                                    onClick={openArtifact}
-                                    selectedDocCount={selectedDocCount}
-                                  />
-                                ) : (
-                                  <Box className={`w-full flex gap-3 ${message.role === 'user' ? 'flex-row-reverse justify-start' : 'justify-start'}`}>
-                                    {/* Avatar/Icon area */}
-                                    <Box className="flex-shrink-0">
-                                      {message.role === 'user' ? (
-                                        <Box className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
-                                          <Text size="sm" className="text-white font-medium">R</Text>
-                                        </Box>
-                                      ) : (
-                                        <Box className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-                                          <Wand2 className="w-4 h-4 text-purple-600" />
+                                {/* Message content */}
+                                <Box className="flex-shrink-0 max-w-md">
+                                  {message.role === 'system' ? (
+                                    // System messages: plain black text, no bubble
+                                    <Box className="py-2">
+                                      <Text size="sm" className="text-gray-900 leading-relaxed whitespace-pre-wrap">
+                                        {message.content}
+                                      </Text>
+                                      
+                                      {/* Thinking animation - show below the last system message */}
+                                      {index === messages.length - 1 && isThinking && (
+                                        <Box className="mt-3">
+                                          <style jsx>{`
+                                            @keyframes colorFade {
+                                              0%, 100% { color: rgb(147, 51, 234); }
+                                              50% { color: rgb(0, 0, 0); }
+                                            }
+                                            .thinking-text {
+                                              animation: colorFade 2s ease-in-out infinite;
+                                            }
+                                          `}</style>
+                                          <Text size="sm" className="thinking-text font-medium">
+                                            🔍 Searching your documents and rules…
+                                          </Text>
                                         </Box>
                                       )}
                                     </Box>
-
-                                    {/* Message content */}
-                                    <Box className="flex-shrink-0 max-w-md">
-                                      <Box
-                                        className={`p-4 rounded-2xl inline-block ${
-                                          message.role === 'user'
-                                            ? 'bg-gray-100 text-gray-900'
-                                            : 'bg-[#F9F5FE] text-gray-900'
-                                        }`}
-                                      >
-                                        <Text size="sm" className="text-gray-900 leading-relaxed whitespace-pre-wrap">
-                                          {message.content}
-                                        </Text>
-                                      </Box>
+                                  ) : (
+                                    // User and assistant messages: keep bubble styling
+                                    <Box
+                                      className={`p-4 rounded-2xl inline-block ${
+                                        message.role === 'user'
+                                          ? 'bg-gray-100 text-gray-900'
+                                          : 'bg-[#F9F5FE] text-gray-900'
+                                      }`}
+                                    >
+                                      <Text size="sm" className="text-gray-900 leading-relaxed whitespace-pre-wrap">
+                                        {message.content}
+                                      </Text>
                                     </Box>
-                                  </Box>
-                                )}
+                                  )}
+                                </Box>
                               </Box>
-                            ))}
-                          </VStack>
-                        </Box>
-                      )}
+                            </Box>
+                          ))}
+                        </VStack>
+                      </Box>
 
-                      {/* Chat input - visible when artifact is not open OR during chat preview */}
-                      {(artifactState !== 'open' || showChatPreview) && (
-                        <Box 
-                          className="flex-shrink-0 p-4 bg-white"
-                          data-chat-preview-area
-                          onMouseLeave={() => {
-                            if (showChatPreview && artifactState === 'open') {
-                              // Hide preview when leaving input area
-                              setTimeout(() => {
-                                // Double-check we're not hovering over button or other chat areas
-                                const hoveredElement = document.querySelector(':hover')
-                                const isHoveringChatArea = hoveredElement?.closest('[data-chat-preview-area]') || 
-                                                          hoveredElement?.closest('[data-floating-chat-button]')
-                                if (!isHoveringChatArea) {
-                                  setShowChatPreview(false)
-                                }
-                              }, 150)
-                            }
-                          }}
-                        >
-                          <Box className="w-full max-w-[600px] mx-auto">
-                            <Replybox
-                              handleSubmit={(message) => {
-                                // If we're in preview mode and user sends a message, commit to chat
-                                if (showChatPreview && artifactState === 'open') {
-                                  setArtifactState('pinned')
-                                  setShowChatPreview(false)
-                                }
-                                handleSendMessage(message)
-                              }}
-                              placeholder="Message Genie"
-                              className="min-h-[44px]"
-                              classNames={{
-                                inputWrapper: 'border border-gray-300 bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow',
-                                input: 'px-4 py-3',
-                              }}
-                              onFocus={() => {
-                                // If user focuses on input during preview, commit to chat mode
-                                if (showChatPreview && artifactState === 'open') {
-                                  setArtifactState('pinned')
-                                  setShowChatPreview(false)
-                                }
-                              }}
-                            />
-                          </Box>
+                      {/* Chat input */}
+                      <Box className="flex-shrink-0 p-4 bg-white">
+                        <Box className="w-full max-w-[600px] mx-auto">
+                          <Replybox
+                            handleSubmit={(message) => handleSendMessage(message)}
+                            placeholder="Message Genie"
+                            className="min-h-[44px]"
+                            classNames={{
+                              inputWrapper: 'border border-gray-300 bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow',
+                              input: 'px-4 py-3',
+                            }}
+                          />
                         </Box>
-                      )}
-
+                      </Box>
                     </div>
                   </Box>
                 </Box>
@@ -947,68 +421,13 @@ By: _________________`
                     {/* Content */}
                     <Box className="flex-1 p-6 overflow-y-auto h-0">
                       {activeTab === 'documents' && (
-                        <VStack spacing={6} align="start" className="w-full h-full">
-                          {/* Show only current document at full height */}
-                          {(() => {
-                            const currentDoc = createDocs[currentDocIndex]
-                            if (!currentDoc) return null
-
-                            const i = currentDocIndex
-                            const doc = currentDoc
-
-                            return (
-                              <Box key={`doc-${i}`} className="w-full h-full flex flex-col">
-                                <Text size="lg" className="mb-4 text-gray-900 font-semibold">Creating document {i + 1}:</Text>
-                                <Box className="border rounded-lg bg-white shadow-sm flex-1 flex flex-col">
-                                  <Flex align="center" justify="between" className="p-3 border-b">
-                                    <Flex align="center" gap={3}>
-                                      <FileText className="w-4 h-4 text-blue-500" />
-                                      <Text size="sm" className="text-gray-900">{doc}.docx</Text>
-                                    </Flex>
-                                    <Flex align="center" gap={3}>
-                                      <Text size="xs" className="text-purple-600 bg-purple-100 px-2 py-1 rounded-md animate-pulse">
-                                        Genie editing...
-                                      </Text>
-                                    </Flex>
-                                  </Flex>
-
-                                  {/* Document Content - Always visible at full height */}
-                                  <Box className="flex-1 p-4 overflow-hidden">
-                                    <Box
-                                      className="bg-gray-50 p-4 rounded text-sm font-mono leading-relaxed overflow-y-auto flex items-center justify-center h-full"
-                                    >
-                                      {loadingDocs[doc] ? (
-                                        <VStack spacing={3} align="center">
-                                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-                                          <Text size="sm" className="text-gray-600">Generating document...</Text>
-                                        </VStack>
-                                      ) : generatedDocs[doc] ? (
-                                        <pre className="whitespace-pre-wrap text-gray-800 w-full">
-                                          {generateDummyContent(doc)}
-                                        </pre>
-                                      ) : (
-                                        <Text size="md" className="text-gray-500">Your document will appear here</Text>
-                                      )}
-                                    </Box>
-                                  </Box>
-                                </Box>
-
-                                {/* Review and edit doc button - shown after document is generated */}
-                                {generatedDocs[doc] && (
-                                  <Box className="mt-4">
-                                    <Button
-                                      variant="solid"
-                                      size="md"
-                                      className="bg-purple-600 hover:bg-purple-700 text-white rounded-full px-6 py-4 flex items-center gap-2"
-                                    >
-                                      <FileText className="w-5 h-5" />
-                                      Review and edit doc
-                                    </Button>
-                                  </Box>
-                                )}
-                              </Box>
-                            )
-                          })()}
+                        <VStack spacing={4} align="start" className="h-full">
+                          <Box className="w-full">
+                            <Text size="lg" className="mb-4 text-gray-900 font-semibold">Documents:</Text>
+                            <Text size="sm" className="text-gray-600">
+                              Your documents will appear here.
+                            </Text>
+                          </Box>
                         </VStack>
                       )}
 
