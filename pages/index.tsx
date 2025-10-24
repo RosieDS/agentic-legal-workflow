@@ -19,13 +19,16 @@ import {
 } from 'lucide-react'
 import { handleIntentStep, UserIntent, getFollowUpQuestion } from '@/agent/intentStep'
 import { PlanningStage } from '@/components/PlanningStage'
+import { DocumentPlan, generateDocumentPlanSections, DocumentPlanSection } from '@/components/DocumentPlan'
 
 // Message type definition
 type Message = {
   id: string
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system' | 'document-plan'
   content: string
   timestamp: number
+  documentType?: string
+  planSections?: DocumentPlanSection[]
 }
 
 export default function Home() {
@@ -39,6 +42,25 @@ export default function Home() {
   
   // Planning stage state
   const [planningData, setPlanningData] = useState<{intent: UserIntent, timestamp: number} | null>(null)
+  
+  // Document plan state
+  const [isCreatingPlan, setIsCreatingPlan] = useState(false)
+  const [documentPlanData, setDocumentPlanData] = useState<{documentType: string, timestamp: number, userAnswer?: string} | null>(null)
+  const [waitingForFollowUp, setWaitingForFollowUp] = useState(false)
+  
+  // Document processing state
+  const [isProcessingDocument, setIsProcessingDocument] = useState(false)
+  const [currentProcessingSection, setCurrentProcessingSection] = useState<string | null>(null)
+  const [planSections, setPlanSections] = useState<DocumentPlanSection[]>([])
+  
+  // Created documents state
+  const [createdDocuments, setCreatedDocuments] = useState<Array<{
+    id: string
+    name: string
+    type: string
+    content: string
+    timestamp: number
+  }>>([])
 
   // Sequential message counter for dynamic IDs
   const [messageCounter, setMessageCounter] = useState(0)
@@ -51,7 +73,7 @@ export default function Home() {
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, planningData])
+  }, [messages, planningData, documentPlanData])
 
   // Message helper functions
   const addMessage = useCallback((role: 'user' | 'assistant' | 'system', content: string) => {
@@ -134,9 +156,42 @@ export default function Home() {
       addMessage('user', messageContent)
     }
 
+    // Check if we're waiting for a follow-up response after planning stage
+    if (waitingForFollowUp && planningData?.intent === 'create') {
+      // User just answered the follow-up question
+      setWaitingForFollowUp(false)
+      
+      // Extract document type from the FIRST user message (not the follow-up response)
+      const firstUserMessage = messages.find(msg => msg.role === 'user')
+      const documentType = extractDocumentType(firstUserMessage?.content || messageContent)
+      
+      // Show confirmation message
+      addMessage('system', `Great - let's create your ${documentType}`)
+      
+      // Show thinking animation for document plan creation
+      setIsCreatingPlan(true)
+      
+      // Wait 3 seconds
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      
+      // Hide thinking animation
+      setIsCreatingPlan(false)
+      
+      // Show document plan and initialize sections
+      const sections = generateDocumentPlanSections(documentType)
+      setPlanSections(sections)
+      setDocumentPlanData({ documentType, timestamp: Date.now(), userAnswer: messageContent })
+      
+      return
+    }
+
     // Callback to show planning stage after thinking completes
     const handlePlanningReady = (intent: UserIntent) => {
       setPlanningData({ intent, timestamp: Date.now() })
+      // Set flag to wait for follow-up response
+      if (intent === 'create') {
+        setWaitingForFollowUp(true)
+      }
     }
 
     // If this is the first message from landing page (skipUserMessage = true),
@@ -149,6 +204,252 @@ export default function Home() {
 
     // For subsequent messages, also run intent step
     await handleIntentStep(messageContent, addMessage, setIsThinking, handlePlanningReady)
+  }
+  
+  // Helper function to extract document type from user message
+  const extractDocumentType = (message: string): string => {
+    const lowerMessage = message.toLowerCase()
+    
+    // Common document types
+    if (lowerMessage.includes('employment') || lowerMessage.includes('hire') || lowerMessage.includes('employee')) {
+      return 'Employment Agreement'
+    }
+    if (lowerMessage.includes('nda') || lowerMessage.includes('non-disclosure') || lowerMessage.includes('confidential')) {
+      return 'Non-Disclosure Agreement'
+    }
+    if (lowerMessage.includes('service') || lowerMessage.includes('contractor')) {
+      return 'Service Agreement'
+    }
+    if (lowerMessage.includes('purchase') || lowerMessage.includes('sale')) {
+      return 'Purchase Agreement'
+    }
+    if (lowerMessage.includes('contract')) {
+      return 'Contract'
+    }
+    
+    // Default
+    return 'Document'
+  }
+  
+  // Handle document creation with sequential processing
+  const handleCreateDocument = async () => {
+    if (!documentPlanData) return
+    
+    setIsProcessingDocument(true)
+    const sections = [...planSections]
+    
+    // Process each section sequentially
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i]
+      
+      // Set current processing section (show thinking text)
+      setCurrentProcessingSection(section.id)
+      
+      // Random delay between 2-5 seconds
+      const delay = Math.random() * 3000 + 2000 // 2000-5000ms
+      await new Promise(resolve => setTimeout(resolve, delay))
+      
+      // After processing is done, tick off THIS section
+      sections[i] = { ...sections[i], checked: true }
+      setPlanSections([...sections])
+      
+      // Small delay to ensure the tick is visible before moving to next section
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    
+    // Clear processing state
+    setCurrentProcessingSection(null)
+    setIsProcessingDocument(false)
+    
+    // Create the document
+    const newDocument = {
+      id: `doc-${Date.now()}`,
+      name: `${documentPlanData.documentType}.docx`,
+      type: documentPlanData.documentType,
+      content: generateDocumentContent(documentPlanData.documentType),
+      timestamp: Date.now()
+    }
+    
+    setCreatedDocuments(prev => [...prev, newDocument])
+    
+    // Switch to Documents tab
+    setActiveTab('documents')
+    
+    // Generate success message with summary
+    const userAnswer = documentPlanData.userAnswer || ''
+    const summary = generateDocumentSummary(documentPlanData.documentType, userAnswer)
+    
+    // Add success message
+    addMessage('system', `✅ ${summary}\n\nDo you want to save this as a new template?`)
+  }
+  
+  // Generate document summary for success message
+  const generateDocumentSummary = (docType: string, userAnswer: string): string => {
+    const lowerAnswer = userAnswer.toLowerCase()
+    
+    // Extract key intent from user's answer
+    let focus = 'tailored to your needs'
+    
+    if (lowerAnswer.includes('protect') || lowerAnswer.includes('confidential') || lowerAnswer.includes('secret')) {
+      focus = 'focused on protecting confidential information'
+    } else if (lowerAnswer.includes('hire') || lowerAnswer.includes('employee') || lowerAnswer.includes('team')) {
+      focus = 'designed to streamline your hiring process'
+    } else if (lowerAnswer.includes('clear') || lowerAnswer.includes('simple') || lowerAnswer.includes('straightforward')) {
+      focus = 'with clear and simple terms'
+    } else if (lowerAnswer.includes('comprehensive') || lowerAnswer.includes('detailed') || lowerAnswer.includes('thorough')) {
+      focus = 'with comprehensive coverage of all key terms'
+    } else if (lowerAnswer.includes('flexible') || lowerAnswer.includes('balanced')) {
+      focus = 'with balanced and flexible terms'
+    } else if (userAnswer.length > 20) {
+      // Extract a short phrase from their answer
+      const words = userAnswer.split(' ').slice(0, 8).join(' ')
+      focus = `focused on ${words.toLowerCase()}${userAnswer.split(' ').length > 8 ? '...' : ''}`
+    }
+    
+    return `We've created your ${docType} that is ${focus}.`
+  }
+  
+  // Generate dummy document content based on type
+  const generateDocumentContent = (docType: string): string => {
+    const lowerType = docType.toLowerCase()
+    
+    if (lowerType.includes('employment')) {
+      return `This Employment Agreement is entered into between [COMPANY NAME] and [EMPLOYEE NAME].
+
+1. POSITION AND DUTIES
+Employee shall serve as [JOB TITLE] and perform duties including:
+- [DUTY 1]
+- [DUTY 2]
+- [DUTY 3]
+
+2. COMPENSATION
+Base salary: $[AMOUNT] per year
+Benefits: Health insurance, dental, vision
+Vacation: [NUMBER] days per year
+
+3. EMPLOYMENT TERMS
+Start date: [DATE]
+Employment is at-will and may be terminated by either party
+
+4. CONFIDENTIALITY
+Employee agrees to maintain confidentiality of company information
+
+5. GOVERNING LAW
+This agreement shall be governed by [STATE] law.
+
+[COMPANY NAME]
+By: _______________
+Name: [NAME]
+Title: [TITLE]
+
+EMPLOYEE
+By: _______________
+Name: [EMPLOYEE NAME]`
+    }
+    
+    if (lowerType.includes('nda') || lowerType.includes('confidential')) {
+      return `NON-DISCLOSURE AGREEMENT
+
+This Non-Disclosure Agreement is entered into on [DATE] between:
+
+Disclosing Party: [PARTY A]
+Receiving Party: [PARTY B]
+
+1. CONFIDENTIAL INFORMATION
+The parties may disclose proprietary information including business plans, financial data, and technical specifications.
+
+2. OBLIGATIONS
+The Receiving Party agrees to:
+- Maintain strict confidentiality
+- Use information only for authorized purposes
+- Not disclose to third parties
+
+3. TERM
+This agreement shall remain in effect for [NUMBER] years from the date of signing.
+
+4. RETURN OF MATERIALS
+Upon request, all confidential materials shall be returned or destroyed.
+
+5. GOVERNING LAW
+This agreement shall be governed by [STATE] law.
+
+DISCLOSING PARTY
+By: _______________
+Name: [NAME]
+Date: [DATE]
+
+RECEIVING PARTY  
+By: _______________
+Name: [NAME]
+Date: [DATE]`
+    }
+    
+    if (lowerType.includes('service')) {
+      return `SERVICE AGREEMENT
+
+This Service Agreement is entered into between:
+
+Client: [CLIENT NAME]
+Service Provider: [PROVIDER NAME]
+
+1. SERVICES
+Provider agrees to perform the following services:
+- [SERVICE 1]
+- [SERVICE 2]
+- [SERVICE 3]
+
+2. COMPENSATION
+Fees: $[AMOUNT]
+Payment terms: [TERMS]
+
+3. TERM
+Start date: [DATE]
+Duration: [PERIOD]
+
+4. DELIVERABLES
+Provider shall deliver:
+- [DELIVERABLE 1]
+- [DELIVERABLE 2]
+
+5. INTELLECTUAL PROPERTY
+All work product shall be owned by [PARTY].
+
+6. TERMINATION
+Either party may terminate with [NUMBER] days notice.
+
+CLIENT
+By: _______________
+Name: [NAME]
+
+SERVICE PROVIDER
+By: _______________
+Name: [NAME]`
+    }
+    
+    // Default document
+    return `${docType.toUpperCase()}
+
+This ${docType} is entered into on [DATE] between the parties.
+
+1. PURPOSE
+This document establishes the terms and conditions of the agreement between the parties.
+
+2. TERMS
+[Insert specific terms here]
+
+3. OBLIGATIONS
+Each party agrees to fulfill their respective obligations as outlined herein.
+
+4. GOVERNING LAW
+This agreement shall be governed by applicable law.
+
+PARTY A
+By: _______________
+Name: [NAME]
+
+PARTY B
+By: _______________
+Name: [NAME]`
   }
 
 
@@ -316,6 +617,10 @@ export default function Home() {
                               message.timestamp <= planningData.timestamp && 
                               (index === messages.length - 1 || messages[index + 1].timestamp > planningData.timestamp)
                             
+                            const documentPlanAfterThis = documentPlanData && 
+                              message.timestamp <= documentPlanData.timestamp && 
+                              (index === messages.length - 1 || messages[index + 1].timestamp > documentPlanData.timestamp)
+                            
                             return (
                               <React.Fragment key={message.id}>
                                 <Box className="w-full">
@@ -356,6 +661,24 @@ export default function Home() {
                                               `}</style>
                                               <Text size="sm" className="thinking-text font-medium">
                                                 🔍 Searching your documents and rules…
+                                              </Text>
+                                            </Box>
+                                          )}
+                                          
+                                          {/* Document plan creation thinking animation */}
+                                          {index === messages.length - 1 && isCreatingPlan && (
+                                            <Box className="mt-3">
+                                              <style jsx>{`
+                                                @keyframes colorFade {
+                                                  0%, 100% { color: rgb(147, 51, 234); }
+                                                  50% { color: rgb(0, 0, 0); }
+                                                }
+                                                .thinking-text {
+                                                  animation: colorFade 2s ease-in-out infinite;
+                                                }
+                                              `}</style>
+                                              <Text size="sm" className="thinking-text font-medium">
+                                                Creating document plan...
                                               </Text>
                                             </Box>
                                           )}
@@ -406,6 +729,20 @@ export default function Home() {
                                       </Box>
                                     </Box>
                                   </>
+                                )}
+                                
+                                {/* Document Plan - appears after user responds to follow-up question */}
+                                {documentPlanAfterThis && !isCreatingPlan && (
+                                  <Box className="w-full">
+                                    <DocumentPlan
+                                      documentType={documentPlanData.documentType}
+                                      sections={planSections}
+                                      onSectionsChange={setPlanSections}
+                                      onCreateDocument={handleCreateDocument}
+                                      isProcessing={isProcessingDocument}
+                                      currentProcessingSection={currentProcessingSection}
+                                    />
+                                  </Box>
                                 )}
                               </React.Fragment>
                             )
@@ -480,12 +817,63 @@ export default function Home() {
                     <Box className="flex-1 p-6 overflow-y-auto h-0">
                       {activeTab === 'documents' && (
                         <VStack spacing={4} align="start" className="h-full">
-                          <Box className="w-full">
-                            <Text size="lg" className="mb-4 text-gray-900 font-semibold">Documents:</Text>
-                            <Text size="sm" className="text-gray-600">
-                              Your documents will appear here.
-                            </Text>
-                          </Box>
+                          {createdDocuments.length === 0 ? (
+                            <Box className="w-full">
+                              <Text size="lg" className="mb-4 text-gray-900 font-semibold">Documents:</Text>
+                              <Text size="sm" className="text-gray-600">
+                                Your documents will appear here.
+                              </Text>
+                            </Box>
+                          ) : (
+                            <Box className="w-full">
+                              <Text size="lg" className="mb-4 text-gray-900 font-semibold">Documents</Text>
+                              {createdDocuments.map((doc) => (
+                                <VStack key={doc.id} spacing={3} align="start" className="w-full">
+                                  {/* Document content - all white, full width */}
+                                  <Box className="w-full border border-gray-200 rounded-lg p-6 bg-white max-h-[500px] overflow-y-auto">
+                                    {/* Document header */}
+                                    <Flex align="center" gap={3} className="mb-4">
+                                      <FileText className="w-6 h-6 text-purple-600" />
+                                      <Text size="md" className="font-semibold text-gray-900">
+                                        {doc.name}
+                                      </Text>
+                                    </Flex>
+                                    
+                                    {/* Document content - full width */}
+                                    <Text size="sm" className="text-gray-700 whitespace-pre-line">
+                                      {doc.content}
+                                    </Text>
+                                  </Box>
+                                  
+                                  {/* Review button - below the document */}
+                                  <Flex justify="end" className="w-full">
+                                    <Button
+                                      variant="solid"
+                                      className="bg-purple-600 hover:bg-purple-700 text-white rounded-full"
+                                      onPress={() => console.log('Review doc', doc.id)}
+                                    >
+                                      <svg 
+                                        xmlns="http://www.w3.org/2000/svg" 
+                                        width="16" 
+                                        height="16" 
+                                        viewBox="0 0 24 24" 
+                                        fill="none" 
+                                        stroke="currentColor" 
+                                        strokeWidth="2" 
+                                        strokeLinecap="round" 
+                                        strokeLinejoin="round"
+                                        className="mr-2"
+                                      >
+                                        <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>
+                                        <path d="m15 5 4 4"/>
+                                      </svg>
+                                      Review and edit doc
+                                    </Button>
+                                  </Flex>
+                                </VStack>
+                              ))}
+                            </Box>
+                          )}
                         </VStack>
                       )}
 
