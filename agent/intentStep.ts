@@ -52,75 +52,39 @@ export type AddMessageCallback = (role: 'user' | 'assistant' | 'system', content
 export function detectIntent(userMessage: string): IntentDetectionResult {
   const message = userMessage.toLowerCase().trim()
   
-  // Keywords for "create" intent
+  // Keywords for "create" intent - removed generic words like "want", "need"
   const createKeywords = [
     'create', 'draft', 'make', 'generate', 'write', 'prepare',
-    'need', 'want', 'build', 'compose', 'produce'
+    'build', 'compose', 'produce', 'new document', 'new contract'
   ]
   
-  // Keywords for "review" intent
+  // Keywords for "review" intent - these should take priority
   const reviewKeywords = [
     'review', 'check', 'analyse', 'analyze', 'improve', 'revise',
-    'look at', 'examine', 'assess', 'evaluate', 'audit'
+    'look at', 'examine', 'assess', 'evaluate', 'audit', 'verify',
+    'validate', 'inspect'
   ]
   
-  // Check for create intent
+  // Check for matches
   const createMatches = createKeywords.filter(keyword => message.includes(keyword))
   const reviewMatches = reviewKeywords.filter(keyword => message.includes(keyword))
   
-  // If both create and review keywords are present, prefer the one with more matches
-  if (createMatches.length > 0 && reviewMatches.length > 0) {
-    if (createMatches.length > reviewMatches.length) {
-      return {
-        intent: 'create',
-        confidence: 'medium',
-        detectedKeywords: createMatches
-      }
-    } else if (reviewMatches.length > createMatches.length) {
-      return {
-        intent: 'review',
-        confidence: 'medium',
-        detectedKeywords: reviewMatches
-      }
-    }
-    // Equal matches - check which appears first
-    const firstCreateIndex = Math.min(...createKeywords
-      .map(k => message.indexOf(k))
-      .filter(i => i >= 0))
-    const firstReviewIndex = Math.min(...reviewKeywords
-      .map(k => message.indexOf(k))
-      .filter(i => i >= 0))
-    
-    if (firstCreateIndex < firstReviewIndex) {
-      return {
-        intent: 'create',
-        confidence: 'low',
-        detectedKeywords: createMatches
-      }
-    } else {
-      return {
-        intent: 'review',
-        confidence: 'low',
-        detectedKeywords: reviewMatches
-      }
+  // Priority: If review keywords are found, strongly prefer review intent
+  // (since review is a more specific action than create)
+  if (reviewMatches.length > 0) {
+    return {
+      intent: 'review',
+      confidence: reviewMatches.length >= 2 ? 'high' : 'high',
+      detectedKeywords: reviewMatches
     }
   }
   
-  // Only create keywords found
+  // If create keywords found (and no review keywords from above)
   if (createMatches.length > 0) {
     return {
       intent: 'create',
       confidence: createMatches.length >= 2 ? 'high' : 'medium',
       detectedKeywords: createMatches
-    }
-  }
-  
-  // Only review keywords found
-  if (reviewMatches.length > 0) {
-    return {
-      intent: 'review',
-      confidence: reviewMatches.length >= 2 ? 'high' : 'medium',
-      detectedKeywords: reviewMatches
     }
   }
   
@@ -168,11 +132,13 @@ export function generateThinkingMessage(): string {
  * 2. Immediately sends a system message with the detected intent
  * 3. Sets thinking state to true (for UI animation)
  * 4. After a delay, sets thinking state to false
- * 5. Returns the detection result for potential use by calling code
+ * 5. Triggers the planning stage
+ * 6. Returns the detection result for potential use by calling code
  * 
  * @param userMessage - The user's input message
  * @param addMessage - Callback function to add messages to the chat
  * @param setThinking - Callback function to set thinking state
+ * @param onPlanningReady - Callback to trigger planning stage with detected intent
  * @returns Promise<IntentDetectionResult> - The detected intent result
  * 
  * @example
@@ -180,7 +146,8 @@ export function generateThinkingMessage(): string {
  * const result = await handleIntentStep(
  *   "I want to create an NDA",
  *   (role, content) => setMessages(prev => [...prev, { role, content, id: generateId(), timestamp: Date.now() }]),
- *   (isThinking) => setIsThinking(isThinking)
+ *   (isThinking) => setIsThinking(isThinking),
+ *   (intent) => setShowPlanning(true)
  * )
  * console.log(result.intent) // "create"
  * ```
@@ -188,7 +155,8 @@ export function generateThinkingMessage(): string {
 export async function handleIntentStep(
   userMessage: string,
   addMessage: AddMessageCallback,
-  setThinking: (isThinking: boolean) => void
+  setThinking: (isThinking: boolean) => void,
+  onPlanningReady?: (intent: UserIntent) => void
 ): Promise<IntentDetectionResult> {
   // Step 1: Detect the intent
   const detectionResult = detectIntent(userMessage)
@@ -206,8 +174,27 @@ export async function handleIntentStep(
   // Step 5: Hide thinking animation
   setThinking(false)
   
+  // Step 6: Trigger planning stage (if intent is known)
+  if (onPlanningReady && detectionResult.intent !== 'unknown') {
+    // Small delay before showing planning stage for smooth transition
+    await new Promise(resolve => setTimeout(resolve, 300))
+    onPlanningReady(detectionResult.intent)
+  }
+  
   // Return the detection result for potential future use
   return detectionResult
+}
+
+/**
+ * Get the follow-up question for a given intent
+ */
+export function getFollowUpQuestion(intent: UserIntent): string {
+  if (intent === 'create') {
+    return 'What is the purpose of this document? Describe it in detail and list the 2-3 outcomes that matter most.'
+  } else if (intent === 'review') {
+    return 'Please give me any extra information to help me review. Eg. important details, concerns or risks.'
+  }
+  return ''
 }
 
 // ============================================

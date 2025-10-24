@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import {
   Box,
   Flex,
@@ -17,7 +17,8 @@ import {
   FileText,
   Plus,
 } from 'lucide-react'
-import { handleIntentStep } from '@/agent/intentStep'
+import { handleIntentStep, UserIntent, getFollowUpQuestion } from '@/agent/intentStep'
+import { PlanningStage } from '@/components/PlanningStage'
 
 // Message type definition
 type Message = {
@@ -35,11 +36,22 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([])
   const [chatTitle, setChatTitle] = useState('Chat')
   const [isThinking, setIsThinking] = useState(false)
+  
+  // Planning stage state
+  const [planningData, setPlanningData] = useState<{intent: UserIntent, timestamp: number} | null>(null)
 
   // Sequential message counter for dynamic IDs
   const [messageCounter, setMessageCounter] = useState(0)
   const [workbenchOpen, setWorkbenchOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'documents' | 'context' | 'rules'>('documents')
+  
+  // Ref for auto-scrolling
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, planningData])
 
   // Message helper functions
   const addMessage = useCallback((role: 'user' | 'assistant' | 'system', content: string) => {
@@ -122,16 +134,21 @@ export default function Home() {
       addMessage('user', messageContent)
     }
 
+    // Callback to show planning stage after thinking completes
+    const handlePlanningReady = (intent: UserIntent) => {
+      setPlanningData({ intent, timestamp: Date.now() })
+    }
+
     // If this is the first message from landing page (skipUserMessage = true),
     // use the intent step workflow
     if (skipUserMessage) {
       // Run the intent detection workflow
-      await handleIntentStep(messageContent, addMessage, setIsThinking)
+      await handleIntentStep(messageContent, addMessage, setIsThinking, handlePlanningReady)
       return
     }
 
     // For subsequent messages, also run intent step
-    await handleIntentStep(messageContent, addMessage, setIsThinking)
+    await handleIntentStep(messageContent, addMessage, setIsThinking, handlePlanningReady)
   }
 
 
@@ -294,71 +311,112 @@ export default function Home() {
                       {/* Chat messages */}
                       <Box className="flex-1 overflow-y-auto p-4 min-h-0">
                         <VStack spacing={6} align="start" className="w-full">
-                          {messages.map((message, index) => (
-                            <Box key={message.id} className="w-full">
-                              <Box className={`w-full flex gap-3 ${message.role === 'user' ? 'flex-row-reverse justify-start' : 'justify-start'}`}>
-                                {/* Avatar/Icon area */}
-                                <Box className="flex-shrink-0">
-                                  {message.role === 'user' ? (
-                                    <Box className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
-                                      <Text size="sm" className="text-white font-medium">R</Text>
+                          {messages.map((message, index) => {
+                            const planningAfterThis = planningData && 
+                              message.timestamp <= planningData.timestamp && 
+                              (index === messages.length - 1 || messages[index + 1].timestamp > planningData.timestamp)
+                            
+                            return (
+                              <React.Fragment key={message.id}>
+                                <Box className="w-full">
+                                  <Box className={`w-full flex gap-3 ${message.role === 'user' ? 'flex-row-reverse justify-start' : 'justify-start'}`}>
+                                    {/* Avatar/Icon area */}
+                                    <Box className="flex-shrink-0">
+                                      {message.role === 'user' ? (
+                                        <Box className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
+                                          <Text size="sm" className="text-white font-medium">R</Text>
+                                        </Box>
+                                      ) : (
+                                        <Box className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                                          <Wand2 className="w-4 h-4 text-purple-600" />
+                                        </Box>
+                                      )}
                                     </Box>
-                                  ) : (
-                                    <Box className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-                                      <Wand2 className="w-4 h-4 text-purple-600" />
-                                    </Box>
-                                  )}
-                                </Box>
 
-                                {/* Message content */}
-                                <Box className="flex-shrink-0 max-w-md">
-                                  {message.role === 'system' ? (
-                                    // System messages: plain black text, no bubble
-                                    <Box className="py-2">
-                                      <Text size="sm" className="text-gray-900 leading-relaxed whitespace-pre-wrap">
-                                        {message.content}
-                                      </Text>
-                                      
-                                      {/* Thinking animation - show below the last system message */}
-                                      {index === messages.length - 1 && isThinking && (
-                                        <Box className="mt-3">
-                                          <style jsx>{`
-                                            @keyframes colorFade {
-                                              0%, 100% { color: rgb(147, 51, 234); }
-                                              50% { color: rgb(0, 0, 0); }
-                                            }
-                                            .thinking-text {
-                                              animation: colorFade 2s ease-in-out infinite;
-                                            }
-                                          `}</style>
-                                          <Text size="sm" className="thinking-text font-medium">
-                                            🔍 Searching your documents and rules…
+                                    {/* Message content */}
+                                    <Box className="flex-shrink-0 max-w-md">
+                                      {message.role === 'system' ? (
+                                        // System messages: plain black text, no bubble
+                                        <Box className="py-2">
+                                          <Text size="sm" className="text-gray-900 leading-relaxed whitespace-pre-wrap">
+                                            {message.content}
+                                          </Text>
+                                          
+                                          {/* Thinking animation - show below the last system message */}
+                                          {index === messages.length - 1 && isThinking && (
+                                            <Box className="mt-3">
+                                              <style jsx>{`
+                                                @keyframes colorFade {
+                                                  0%, 100% { color: rgb(147, 51, 234); }
+                                                  50% { color: rgb(0, 0, 0); }
+                                                }
+                                                .thinking-text {
+                                                  animation: colorFade 2s ease-in-out infinite;
+                                                }
+                                              `}</style>
+                                              <Text size="sm" className="thinking-text font-medium">
+                                                🔍 Searching your documents and rules…
+                                              </Text>
+                                            </Box>
+                                          )}
+                                        </Box>
+                                      ) : (
+                                        // User and assistant messages: keep bubble styling
+                                        <Box
+                                          className={`p-4 rounded-2xl inline-block ${
+                                            message.role === 'user'
+                                              ? 'bg-gray-100 text-gray-900'
+                                              : 'bg-[#F9F5FE] text-gray-900'
+                                          }`}
+                                        >
+                                          <Text size="sm" className="text-gray-900 leading-relaxed whitespace-pre-wrap">
+                                            {message.content}
                                           </Text>
                                         </Box>
                                       )}
                                     </Box>
-                                  ) : (
-                                    // User and assistant messages: keep bubble styling
-                                    <Box
-                                      className={`p-4 rounded-2xl inline-block ${
-                                        message.role === 'user'
-                                          ? 'bg-gray-100 text-gray-900'
-                                          : 'bg-[#F9F5FE] text-gray-900'
-                                      }`}
-                                    >
-                                      <Text size="sm" className="text-gray-900 leading-relaxed whitespace-pre-wrap">
-                                        {message.content}
-                                      </Text>
-                                    </Box>
-                                  )}
+                                  </Box>
                                 </Box>
-                              </Box>
-                            </Box>
-                          ))}
+                                
+                                {/* Planning Stage - appears after the right message chronologically */}
+                                {planningAfterThis && (
+                                  <>
+                                    <Box className="w-full">
+                                      <PlanningStage intent={planningData.intent} />
+                                    </Box>
+                                    
+                                    {/* Follow-up question system message */}
+                                    <Box className="w-full mt-1">
+                                      <Box className="w-full flex gap-3 justify-start">
+                                        {/* Avatar/Icon area */}
+                                        <Box className="flex-shrink-0">
+                                          <Box className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                                            <Wand2 className="w-4 h-4 text-purple-600" />
+                                          </Box>
+                                        </Box>
+
+                                        {/* Message content */}
+                                        <Box className="flex-shrink-0 max-w-md">
+                                          <Box className="py-2">
+                                            <Text size="sm" className="text-gray-900 leading-relaxed whitespace-pre-wrap">
+                                              {getFollowUpQuestion(planningData.intent)}
+                                            </Text>
+                                          </Box>
+                                        </Box>
+                                      </Box>
+                                    </Box>
+                                  </>
+                                )}
+                              </React.Fragment>
+                            )
+                          })}
+                          
+                          {/* Invisible element for auto-scroll */}
+                          <div ref={messagesEndRef} />
                         </VStack>
                       </Box>
 
-                      {/* Chat input */}
+                      {/* Chat input - always visible */}
                       <Box className="flex-shrink-0 p-4 bg-white">
                         <Box className="w-full max-w-[600px] mx-auto">
                           <Replybox
