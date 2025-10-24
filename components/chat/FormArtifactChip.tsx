@@ -1,5 +1,5 @@
 import React from 'react'
-import { Box, Flex, Text } from '@/genie-ui'
+import { Box, Text } from '@/genie-ui'
 import { FileText, X } from 'lucide-react'
 
 interface FormArtifactChipProps {

@@ -31,7 +31,6 @@ export interface DocumentPlanProps {
  * - "Create Document" button at the bottom
  */
 export function DocumentPlan({ 
-  documentType, 
   sections: initialSections,
   onSectionsChange,
   onCreateDocument,
@@ -203,13 +202,13 @@ export function generateDocumentPlanSections(documentType: string): DocumentPlan
     {
       id: 'boilerplate',
       title: 'Create boilerplate clauses',
-      content: getBoilerplateContent(normalizedType),
+      content: getBoilerplateContent(),
       checked: false,
     },
     {
       id: 'consistency',
       title: 'Review for document consistency',
-      content: getConsistencyContent(normalizedType),
+      content: getConsistencyContent(),
       checked: false,
     },
     {
@@ -221,7 +220,7 @@ export function generateDocumentPlanSections(documentType: string): DocumentPlan
     {
       id: 'legal-soundness',
       title: 'Check document is legally sound',
-      content: getLegalSoundnessContent(normalizedType),
+      content: getLegalSoundnessContent(),
       checked: false,
     },
   ]
@@ -231,77 +230,77 @@ export function generateDocumentPlanSections(documentType: string): DocumentPlan
 
 // Helper functions to generate content for each section based on document type
 
-function getBackgroundContent(documentType: string): string {
-  if (documentType.includes('employment') || documentType.includes('hire')) {
+function getBackgroundContent(docType: string): string {
+  if (docType.includes('employment') || docType.includes('hire')) {
     return 'Provide context about the employment relationship, including the position, start date, and reporting structure. Include any relevant background about the company and the role.'
   }
-  if (documentType.includes('nda') || documentType.includes('confidential')) {
+  if (docType.includes('nda') || docType.includes('confidential')) {
     return 'Outline the purpose of the confidentiality agreement, the nature of the business relationship, and the type of confidential information that will be shared.'
   }
-  if (documentType.includes('service') || documentType.includes('contractor')) {
+  if (docType.includes('service') || docType.includes('contractor')) {
     return 'Describe the services to be provided, the project scope, and the business relationship between the parties. Include relevant background information.'
   }
-  if (documentType.includes('purchase') || documentType.includes('sale')) {
+  if (docType.includes('purchase') || docType.includes('sale')) {
     return 'Provide background on the transaction, including the assets or goods being purchased, the business context, and any relevant history between the parties.'
   }
   return 'Provide relevant background information about the agreement, including the purpose, context, and relationship between the parties.'
 }
 
-function getPartiesContent(documentType: string): string {
-  if (documentType.includes('employment') || documentType.includes('hire')) {
+function getPartiesContent(docType: string): string {
+  if (docType.includes('employment') || docType.includes('hire')) {
     return 'Define the employer (company name, registration details, address) and the employee (full name, position, department). Include any relevant entity details.'
   }
-  if (documentType.includes('nda') || documentType.includes('confidential')) {
+  if (docType.includes('nda') || docType.includes('confidential')) {
     return 'Identify the disclosing party and receiving party, including full legal names, addresses, and registration numbers if applicable.'
   }
   return 'Clearly identify all parties to the agreement, including full legal names, addresses, and registration details where applicable.'
 }
 
-function getCommercialContent(documentType: string): string {
-  if (documentType.includes('employment') || documentType.includes('hire')) {
+function getCommercialContent(docType: string): string {
+  if (docType.includes('employment') || docType.includes('hire')) {
     return 'Insert the commercial terms including payment schedules, pricing structures, delivery timelines, and any performance milestones. For employment: salary, benefits, bonuses, equity compensation, and payment schedule.'
   }
-  if (documentType.includes('service') || documentType.includes('contractor')) {
+  if (docType.includes('service') || docType.includes('contractor')) {
     return 'Insert the commercial terms including payment schedules, pricing structures, delivery timelines, and any performance milestones. Include rates, invoicing terms, and payment conditions.'
   }
-  if (documentType.includes('purchase') || documentType.includes('sale')) {
+  if (docType.includes('purchase') || docType.includes('sale')) {
     return 'Insert the commercial terms including payment schedules, pricing structures, delivery timelines, and any performance milestones. Include purchase price, payment terms, and delivery schedule.'
   }
   return 'Insert the commercial terms including payment schedules, pricing structures, delivery timelines, and any performance milestones.'
 }
 
-function getKeyClausesContent(documentType: string): string {
-  if (documentType.includes('employment') || documentType.includes('hire')) {
+function getKeyClausesContent(docType: string): string {
+  if (docType.includes('employment') || docType.includes('hire')) {
     return 'Include essential clauses such as: duties and responsibilities, working hours, leave entitlements, termination provisions, intellectual property assignment, confidentiality obligations, and non-compete/non-solicit provisions where appropriate.'
   }
-  if (documentType.includes('nda') || documentType.includes('confidential')) {
+  if (docType.includes('nda') || docType.includes('confidential')) {
     return 'Include essential clauses such as: definition of confidential information, permitted use, non-disclosure obligations, exclusions, term and survival, and remedies for breach.'
   }
-  if (documentType.includes('service') || documentType.includes('contractor')) {
+  if (docType.includes('service') || docType.includes('contractor')) {
     return 'Include essential clauses such as: scope of services, deliverables, acceptance criteria, intellectual property rights, warranties, liability limitations, and indemnification.'
   }
   return 'Include the key specific clauses relevant to this type of agreement, addressing the main obligations, rights, and responsibilities of each party.'
 }
 
-function getBoilerplateContent(documentType: string): string {
+function getBoilerplateContent(): string {
   return 'Add standard boilerplate clauses including: governing law and jurisdiction, dispute resolution (mediation/arbitration), entire agreement, amendment provisions, severability, force majeure, notices, and counterparts.'
 }
 
-function getConsistencyContent(documentType: string): string {
+function getConsistencyContent(): string {
   return 'Review the document to ensure consistent use of defined terms, party names, references, numbering, and formatting throughout. Check that cross-references are accurate and that there are no contradictions between sections.'
 }
 
-function getCoverageContent(documentType: string): string {
-  if (documentType.includes('employment') || documentType.includes('hire')) {
+function getCoverageContent(docType: string): string {
+  if (docType.includes('employment') || docType.includes('hire')) {
     return 'Verify that all key aspects of the employment relationship are covered: compensation, benefits, responsibilities, working arrangements, confidentiality, IP rights, termination, and any special provisions discussed.'
   }
-  if (documentType.includes('nda') || documentType.includes('confidential')) {
+  if (docType.includes('nda') || docType.includes('confidential')) {
     return 'Verify that all key aspects of the confidentiality arrangement are covered: scope of information, permitted uses, disclosure restrictions, term, return of materials, and remedies.'
   }
   return 'Verify that the document covers all material terms of the deal, including all key obligations, deliverables, payment terms, timelines, and any special provisions that were discussed or negotiated.'
 }
 
-function getLegalSoundnessContent(documentType: string): string {
+function getLegalSoundnessContent(): string {
   return 'Conduct a final review to ensure the document is legally sound: check that clauses are enforceable, obligations are clear and mutual, rights and remedies are balanced, and the document complies with applicable laws and regulations.'
 }
 

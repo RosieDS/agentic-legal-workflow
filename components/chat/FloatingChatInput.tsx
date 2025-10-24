@@ -1,5 +1,4 @@
 import React, { useState } from 'react'
-import { Box } from '@/genie-ui'
 import { MessageCircle } from 'lucide-react'
 
 interface FloatingChatInputProps {

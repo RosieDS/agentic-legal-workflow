@@ -2,13 +2,10 @@ import React, { useState, useEffect } from 'react'
 import { Box, Flex, VStack, Text, Textarea, Button } from '@/genie-ui'
 import { Select, SelectItem } from '@/genie-ui/components/select'
 import DocDetailSlider, { DocumentType } from '@/genie-ui/components/docDetailSlider'
-import { FileText, Plus, X, Sparkles, Mic, Upload } from 'lucide-react'
+import { Plus, X, Sparkles, Mic, Upload } from 'lucide-react'
 
 interface DocumentFormProps {
   // Form state props
-  prompt: string
-  setPrompt: (value: string) => void
-  initialUserIntent: string // The original user input from landing page
   workDescription: string // Current value for "Tell us about this work" section
   setWorkDescription: (value: string) => void
   selectedExistingInputs: Record<string, string>
@@ -16,7 +13,6 @@ interface DocumentFormProps {
   selectedDocs: Record<string, boolean>
   setSelectedDocs: (value: Record<string, boolean>) => void
   suggestedDocs: string[]
-  createDocs: string[]
   setCreateDocs: (value: string[]) => void
   selectedClauses: Record<string, boolean>
   setSelectedClauses: (value: Record<string, boolean>) => void
@@ -35,7 +31,6 @@ interface DocumentFormProps {
   language: string
   setLanguage: (value: string) => void
   customClauses: Record<string, Array<{name: string, details: string, id: string}>>
-  setCustomClauses: (value: Record<string, Array<{name: string, details: string, id: string}>>) => void
 
   // Callback for when selected docs change
   onSelectedDocsChange?: (count: number) => void
@@ -46,16 +41,11 @@ interface DocumentFormProps {
   updateCustomClauseDetails: (docType: string, clauseId: string, details: string) => void
   removeCustomClause: (docType: string, clauseId: string) => void
   generateKeyClauses: (docType: string) => Array<{name: string, explainer: string}>
-  generateDetailQuestions: () => string[]
   onGenerateDocument?: (docType: string) => void
   generatedDocs?: Record<string, boolean>
 
-  // Optional floating button
-  floatingButton?: React.ReactNode
-
   // Current document index for navigation
   currentDocIndex?: number
-  setCurrentDocIndex?: (index: number) => void
 }
 
 /**
@@ -63,9 +53,6 @@ interface DocumentFormProps {
  * Contains all the form logic from the original implementation
  */
 export const DocumentForm: React.FC<DocumentFormProps> = ({
-  prompt,
-  setPrompt,
-  initialUserIntent,
   workDescription,
   setWorkDescription,
   selectedExistingInputs,
@@ -73,7 +60,6 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
   selectedDocs,
   setSelectedDocs,
   suggestedDocs,
-  createDocs,
   setCreateDocs,
   selectedClauses,
   setSelectedClauses,
@@ -92,31 +78,16 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
   language,
   setLanguage,
   customClauses,
-  setCustomClauses,
   onSelectedDocsChange,
   addCustomClause,
   updateCustomClauseName,
   updateCustomClauseDetails,
   removeCustomClause,
   generateKeyClauses,
-  generateDetailQuestions,
   onGenerateDocument,
   generatedDocs,
-  floatingButton,
-  currentDocIndex = 0,
-  setCurrentDocIndex
+  currentDocIndex = 0
 }) => {
-
-  const getBackgroundColor = () => {
-    switch (documentType) {
-      case 'customised':
-        return 'bg-gradient-to-br from-[#F2E7FE] via-[#F8F3FF] to-[#FDFCFF]'
-      case 'standard':
-        return 'bg-gradient-to-br from-[#EDEFFF] via-[#F5F6FF] to-[#FDFCFF]'
-      default:
-        return 'bg-gradient-to-br from-gray-50 via-white to-gray-50'
-    }
-  }
 
   // Loading state for document library search - track which documents are loading
   const [loadingDocuments, setLoadingDocuments] = useState<Record<string, boolean>>({})
@@ -166,6 +137,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
 
     // Update previous selected docs for next comparison
     setPreviousSelectedDocs(selectedDocs)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDocs])
 
   // Loading component for document library search
@@ -237,7 +209,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
         </Box>
 
         {/* Tell us about this work section */}
-        {(documentType === 'standard' || documentType === 'customised') && (
+        {(documentType === 'template' || documentType === 'customised') && (
           <Box className="w-full bg-white rounded-lg shadow-sm border border-gray-100 p-6">
             <Box className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Box>
@@ -381,7 +353,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
         </Box>
 
         {/* New Layout for Standard, Customised, and Template Document Types */}
-        {(documentType === 'standard' || documentType === 'customised' || documentType === 'template') && (
+        {(documentType === 'template' || documentType === 'customised') && (
           <Box className="w-full relative">
             <VStack spacing={6} align="start" className="w-full">
               {/* Individual Document Sections - Show only current document */}
@@ -394,7 +366,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
                 <Box key={currentDoc} className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
                   {/* Document Header */}
                   <Flex align="center" justify="between" className="mb-8">
-                    <Text size="2xl" className="font-semibold text-gray-900">{currentDoc}</Text>
+                    <Text size="lg" className="font-semibold text-gray-900 text-2xl">{currentDoc}</Text>
                     <Button
                       variant="solid"
                       size="md"
@@ -475,7 +447,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
                       </Flex>
                     </Box>
                   ) : (
-                    /* Two-column layout for standard and customised modes */
+                    /* Two-column layout for template and customised modes */
                     <Box className="flex gap-8">
                     {/* LEFT COLUMN: Sliders + Key Clauses */}
                     <Box className="w-[30%] flex-shrink-0">
@@ -563,26 +535,26 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
                                     <Box key={i} className="w-full border border-purple-300 rounded-2xl p-4 bg-white">
                                       <Flex align="center" justify="between" className="mb-3">
                                         <Text size="sm" className="font-medium text-gray-900">{clause.name}</Text>
-                                        <button
-                                          onClick={() => {
-                                            setSelectedClauses(prev => ({
-                                              ...prev,
-                                              [clauseKey]: false
-                                            }))
-                                          }}
-                                          className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                        >
-                                          <X className="w-4 h-4" />
-                                        </button>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedClauses({
+                                            ...selectedClauses,
+                                            [clauseKey]: false
+                                          })
+                                        }}
+                                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
                                       </Flex>
                                       <Box className="relative">
                                         <Textarea
                                           minRows={2}
                                           value={clauseDetailsText[clauseKey] || ''}
-                                          onValueChange={(val) => setClauseDetailsText(prev => ({
-                                            ...prev,
+                                          onValueChange={(val) => setClauseDetailsText({
+                                            ...clauseDetailsText,
                                             [clauseKey]: val
-                                          }))}
+                                          })}
                                           placeholder="Requirements..."
                                           className="w-full"
                                           classNames={{
@@ -779,7 +751,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
                             <Textarea
                               minRows={6}
                               value={selectedExistingInputs[`document-details-${currentDoc}`] || ''}
-                              onValueChange={(val) => setSelectedExistingInputs(prev => ({...prev, [`document-details-${currentDoc}`]: val}))}
+                              onValueChange={(val) => setSelectedExistingInputs({...selectedExistingInputs, [`document-details-${currentDoc}`]: val})}
                               placeholder=""
                               className="w-full"
                               classNames={{

@@ -126,27 +126,6 @@ export default function Home() {
     return words.length > 50 ? words.substring(0, 47) + '...' : words.replace(/^./, c => c.toUpperCase())
   }
 
-  // Generate welcome response based on user intent
-  const generateWelcomeResponse = (userMessage: string): string => {
-    const message = userMessage.toLowerCase().trim()
-
-    // Extract the core intent to use in the response
-    let intent = userMessage.toLowerCase()
-
-    if (message.startsWith('i want to ')) {
-      intent = userMessage.substring(10)
-    } else if (message.startsWith('i need to ')) {
-      intent = userMessage.substring(10)
-    } else if (message.startsWith('help me ')) {
-      intent = userMessage.substring(8)
-    } else {
-      // Use the first few words as the intent
-      intent = userMessage.split(' ').slice(0, 6).join(' ').toLowerCase()
-    }
-
-    return `Sure, I can help you with ${intent}. How can I assist you today?`
-  }
-
   // Handle message sending
   const handleSendMessage = async (messageContent: string, skipUserMessage = false) => {
     if (!messageContent.trim()) return
@@ -702,7 +681,7 @@ Name: [NAME]`
                                 </Box>
                                 
                                 {/* Planning Stage - appears after the right message chronologically */}
-                                {planningAfterThis && (
+                                {planningAfterThis && planningData.intent !== 'unknown' && (
                                   <>
                                     <Box className="w-full">
                                       <PlanningStage intent={planningData.intent} />
