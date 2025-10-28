@@ -20,6 +20,11 @@ import {
 import { handleIntentStep, UserIntent, getFollowUpQuestion } from '@/agent/intentStep'
 import { PlanningStage } from '@/components/PlanningStage'
 import { DocumentPlan, generateDocumentPlanSections, DocumentPlanSection } from '@/components/DocumentPlan'
+import { KeyClausesPrompt } from '@/components/KeyClausesPrompt'
+import { KeyClausesOverview } from '@/components/KeyClausesOverview'
+import { KeyClausesDetail } from '@/components/KeyClausesDetail'
+import { getKeyClausesForDocumentType, KeyClause } from '@/utils/keyClausesData'
+import { getKeyClausesDetailForDocumentType, ClauseDetail } from '@/utils/keyClausesDetailData'
 
 // Message type definition
 type Message = {
@@ -49,6 +54,16 @@ export default function Home() {
   const [documentPlanData, setDocumentPlanData] = useState<{documentType: string, timestamp: number, userAnswer?: string} | null>(null)
   const [waitingForFollowUp, setWaitingForFollowUp] = useState(false)
   
+  // Key clauses prompt state
+  const [keyClausesPromptData, setKeyClausesPromptData] = useState<{timestamp: number} | null>(null)
+  const [waitingForKeyClausesSelection, setWaitingForKeyClausesSelection] = useState(false)
+  
+  // Key clauses overview state
+  const [keyClausesOverviewData, setKeyClausesOverviewData] = useState<{clauses: KeyClause[], documentType: string, timestamp: number} | null>(null)
+  
+  // Key clauses detail state
+  const [keyClausesDetailData, setKeyClausesDetailData] = useState<{clauses: ClauseDetail[], documentType: string, timestamp: number} | null>(null)
+  
   // Document processing state
   const [isProcessingDocument, setIsProcessingDocument] = useState(false)
   const [currentProcessingSection, setCurrentProcessingSection] = useState<string | null>(null)
@@ -74,7 +89,7 @@ export default function Home() {
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, planningData, documentPlanData])
+  }, [messages, planningData, keyClausesPromptData, keyClausesOverviewData, keyClausesDetailData, documentPlanData])
 
   // Message helper functions
   const addMessage = useCallback((role: 'user' | 'assistant' | 'system', content: string) => {
@@ -148,19 +163,9 @@ export default function Home() {
       // Show confirmation message
       addMessage('system', `Great - let's create your ${documentType}`)
       
-      // Show thinking animation for document plan creation
-      setIsCreatingPlan(true)
-      
-      // Wait 3 seconds
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      
-      // Hide thinking animation
-      setIsCreatingPlan(false)
-      
-      // Show document plan and initialize sections
-      const sections = generateDocumentPlanSections(documentType)
-      setPlanSections(sections)
-      setDocumentPlanData({ documentType, timestamp: Date.now(), userAnswer: messageContent })
+      // Show key clauses prompt
+      setKeyClausesPromptData({ timestamp: Date.now() })
+      setWaitingForKeyClausesSelection(true)
       
       return
     }
@@ -212,6 +217,73 @@ export default function Home() {
       (isThinking) => setThinkingWithIntent(isThinking, detectionResult.intent), 
       handlePlanningReady
     )
+  }
+  
+  // Handler for key clauses option selection
+  const handleKeyClausesSelection = async (option: 'customise' | 'overview' | 'skip') => {
+    console.log('User selected key clauses option:', option)
+    
+    // Clear the waiting state
+    setWaitingForKeyClausesSelection(false)
+    
+    // Extract document type from the FIRST user message
+    const firstUserMessage = messages.find(msg => msg.role === 'user')
+    const userAnswerMessage = messages.filter(msg => msg.role === 'user')[1] // Second user message is the answer
+    const documentType = extractDocumentType(firstUserMessage?.content || '')
+    
+    if (option === 'customise') {
+      // Show detailed editable view of key clauses
+      const clauses = getKeyClausesDetailForDocumentType(documentType)
+      setKeyClausesDetailData({ clauses, documentType, timestamp: Date.now() })
+      // Don't proceed to plan yet - wait for user to click "Next"
+      return
+    }
+    
+    if (option === 'overview') {
+      // Show overview of key clauses (will stay on screen)
+      const clauses = getKeyClausesForDocumentType(documentType)
+      setKeyClausesOverviewData({ clauses, documentType, timestamp: Date.now() })
+    }
+    
+    // Proceed to document plan (for skip and overview options)
+    // Show thinking animation for document plan creation
+    setIsCreatingPlan(true)
+    
+    // Wait 3 seconds
+    await new Promise(resolve => setTimeout(resolve, 3000))
+    
+    // Hide thinking animation
+    setIsCreatingPlan(false)
+    
+    // Show document plan and initialize sections (will appear below overview if overview was shown)
+    const sections = generateDocumentPlanSections(documentType)
+    setPlanSections(sections)
+    setDocumentPlanData({ documentType, timestamp: Date.now(), userAnswer: userAnswerMessage?.content || '' })
+  }
+  
+  // Handler for when user clicks "Next" in detail view
+  const handleKeyClausesDetailNext = async () => {
+    console.log('User clicked Next in key clauses detail view')
+    
+    // Extract document type and user answer
+    const firstUserMessage = messages.find(msg => msg.role === 'user')
+    const userAnswerMessage = messages.filter(msg => msg.role === 'user')[1]
+    const documentType = extractDocumentType(firstUserMessage?.content || '')
+    
+    // Proceed to document plan
+    // Show thinking animation for document plan creation
+    setIsCreatingPlan(true)
+    
+    // Wait 3 seconds
+    await new Promise(resolve => setTimeout(resolve, 3000))
+    
+    // Hide thinking animation
+    setIsCreatingPlan(false)
+    
+    // Show document plan and initialize sections
+    const sections = generateDocumentPlanSections(documentType)
+    setPlanSections(sections)
+    setDocumentPlanData({ documentType, timestamp: Date.now(), userAnswer: userAnswerMessage?.content || '' })
   }
   
   // Helper function to extract document type from user message
@@ -625,6 +697,18 @@ Name: [NAME]`
                               message.timestamp <= planningData.timestamp && 
                               (index === messages.length - 1 || messages[index + 1].timestamp > planningData.timestamp)
                             
+                            const keyClausesPromptAfterThis = keyClausesPromptData && 
+                              message.timestamp <= keyClausesPromptData.timestamp && 
+                              (index === messages.length - 1 || messages[index + 1].timestamp > keyClausesPromptData.timestamp)
+                            
+                            const keyClausesOverviewAfterThis = keyClausesOverviewData && 
+                              message.timestamp <= keyClausesOverviewData.timestamp && 
+                              (index === messages.length - 1 || messages[index + 1].timestamp > keyClausesOverviewData.timestamp)
+                            
+                            const keyClausesDetailAfterThis = keyClausesDetailData && 
+                              message.timestamp <= keyClausesDetailData.timestamp && 
+                              (index === messages.length - 1 || messages[index + 1].timestamp > keyClausesDetailData.timestamp)
+                            
                             const documentPlanAfterThis = documentPlanData && 
                               message.timestamp <= documentPlanData.timestamp && 
                               (index === messages.length - 1 || messages[index + 1].timestamp > documentPlanData.timestamp)
@@ -757,7 +841,35 @@ Name: [NAME]`
                                   </>
                                 )}
                                 
-                                {/* Document Plan - appears after user responds to follow-up question */}
+                                {/* Key Clauses Prompt - appears after "Great - let's create your [doc]" message */}
+                                {keyClausesPromptAfterThis && !isCreatingPlan && !keyClausesOverviewData && !keyClausesDetailData && !documentPlanData && (
+                                  <Box className="w-full">
+                                    <KeyClausesPrompt onOptionSelect={handleKeyClausesSelection} />
+                                  </Box>
+                                )}
+                                
+                                {/* Key Clauses Overview - appears if user selects "Give me an overview" and stays visible */}
+                                {keyClausesOverviewAfterThis && !isCreatingPlan && (
+                                  <Box className="w-full">
+                                    <KeyClausesOverview 
+                                      clauses={keyClausesOverviewData.clauses} 
+                                      documentType={keyClausesOverviewData.documentType}
+                                    />
+                                  </Box>
+                                )}
+                                
+                                {/* Key Clauses Detail - appears if user selects "Customise in detail" */}
+                                {keyClausesDetailAfterThis && !isCreatingPlan && !documentPlanData && (
+                                  <Box className="w-full">
+                                    <KeyClausesDetail 
+                                      clauses={keyClausesDetailData.clauses} 
+                                      documentType={keyClausesDetailData.documentType}
+                                      onNext={handleKeyClausesDetailNext}
+                                    />
+                                  </Box>
+                                )}
+                                
+                                {/* Document Plan - appears after key clauses selection (below overview if it exists) */}
                                 {documentPlanAfterThis && !isCreatingPlan && (
                                   <Box className="w-full">
                                     <DocumentPlan
