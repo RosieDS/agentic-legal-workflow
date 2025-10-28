@@ -743,17 +743,24 @@ Name: [NAME]`
                                           {index === messages.length - 1 && isThinking && (
                                             <Box className="mt-3">
                                               <style jsx>{`
-                                                @keyframes colorFade {
-                                                  0%, 100% { color: rgb(147, 51, 234); }
-                                                  50% { color: rgb(0, 0, 0); }
+                                                @keyframes colorShimmer {
+                                                  0%, 100% { 
+                                                    color: #000000;
+                                                  }
+                                                  50% { 
+                                                    color: #9333ea;
+                                                  }
                                                 }
-                                                .thinking-text {
-                                                  animation: colorFade 2s ease-in-out infinite;
+                                                .thinking-text-shimmer {
+                                                  animation: colorShimmer 2s ease-in-out infinite;
+                                                  font-size: 1.125rem;
+                                                  font-weight: 600;
+                                                  line-height: 1.5;
                                                 }
                                               `}</style>
-                                              <Text size="sm" className="thinking-text font-medium">
-                                                Looking for your documents
-                                              </Text>
+                                              <div className="thinking-text-shimmer">
+                                                Searching your documents and rules
+                                              </div>
                                               
                                               {/* Show button for create flow only */}
                                               {thinkingIntent === 'create' && (

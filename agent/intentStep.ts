@@ -121,7 +121,7 @@ export function generateIntentMessage(intent: UserIntent): string {
  * @returns A message indicating the system is searching
  */
 export function generateThinkingMessage(): string {
-  return "Looking for your documents"
+  return "Searching your documents and rules"
 }
 
 /**
