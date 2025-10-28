@@ -39,6 +39,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([])
   const [chatTitle, setChatTitle] = useState('Chat')
   const [isThinking, setIsThinking] = useState(false)
+  const [thinkingIntent, setThinkingIntent] = useState<UserIntent | null>(null)
   
   // Planning stage state
   const [planningData, setPlanningData] = useState<{intent: UserIntent, timestamp: number} | null>(null)
@@ -167,22 +168,50 @@ export default function Home() {
     // Callback to show planning stage after thinking completes
     const handlePlanningReady = (intent: UserIntent) => {
       setPlanningData({ intent, timestamp: Date.now() })
+      setThinkingIntent(null) // Clear thinking intent when planning is ready
       // Set flag to wait for follow-up response
       if (intent === 'create') {
         setWaitingForFollowUp(true)
       }
     }
 
+    // Wrapper for setIsThinking that also sets the intent
+    const setThinkingWithIntent = (isThinking: boolean, intent?: UserIntent) => {
+      setIsThinking(isThinking)
+      if (isThinking && intent) {
+        setThinkingIntent(intent)
+      } else if (!isThinking) {
+        setThinkingIntent(null)
+      }
+    }
+
     // If this is the first message from landing page (skipUserMessage = true),
     // use the intent step workflow
     if (skipUserMessage) {
-      // Run the intent detection workflow
-      await handleIntentStep(messageContent, addMessage, setIsThinking, handlePlanningReady)
+      // Detect intent first
+      const { detectIntent } = await import('@/agent/intentStep')
+      const detectionResult = detectIntent(messageContent)
+      
+      // Run the intent detection workflow with intent pre-detection
+      await handleIntentStep(
+        messageContent, 
+        addMessage, 
+        (isThinking) => setThinkingWithIntent(isThinking, detectionResult.intent), 
+        handlePlanningReady
+      )
       return
     }
 
     // For subsequent messages, also run intent step
-    await handleIntentStep(messageContent, addMessage, setIsThinking, handlePlanningReady)
+    const { detectIntent } = await import('@/agent/intentStep')
+    const detectionResult = detectIntent(messageContent)
+    
+    await handleIntentStep(
+      messageContent, 
+      addMessage, 
+      (isThinking) => setThinkingWithIntent(isThinking, detectionResult.intent), 
+      handlePlanningReady
+    )
   }
   
   // Helper function to extract document type from user message
@@ -639,8 +668,26 @@ Name: [NAME]`
                                                 }
                                               `}</style>
                                               <Text size="sm" className="thinking-text font-medium">
-                                                🔍 Searching your documents and rules…
+                                                Looking for your documents
                                               </Text>
+                                              
+                                              {/* Show button for create flow only */}
+                                              {thinkingIntent === 'create' && (
+                                                <Box className="mt-4">
+                                                  <Text size="sm" className="text-gray-600 mb-2">
+                                                    Want something simple?
+                                                  </Text>
+                                                  <button 
+                                                    className="flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition-all border-gray-300 bg-white text-gray-900 hover:border-purple-400 hover:shadow-sm"
+                                                    onClick={() => console.log('Quick standard doc clicked')}
+                                                  >
+                                                    <span className="flex-shrink-0">
+                                                      <FileText className="w-4 h-4" />
+                                                    </span>
+                                                    <span className="font-medium">Create a quick standard doc</span>
+                                                  </button>
+                                                </Box>
+                                              )}
                                             </Box>
                                           )}
                                           

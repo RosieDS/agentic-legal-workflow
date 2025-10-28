@@ -127,6 +127,25 @@ export function PlanningStage({ intent }: PlanningStageProps) {
             ))}
             <ParameterChip label="+ Add parameter" isAddButton />
           </div>
+          
+          {/* Show hyperlinked text for create flow only */}
+          {intent === 'create' && (
+            <div className="mt-3">
+              <Text size="sm" className="text-gray-600">
+                Want something simple?{' '}
+                <a 
+                  href="#" 
+                  className="text-gray-900 underline hover:text-purple-600"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    console.log('Quick standard doc clicked')
+                  }}
+                >
+                  Create a quick standard doc
+                </a>
+              </Text>
+            </div>
+          )}
         </section>
       </VStack>
 

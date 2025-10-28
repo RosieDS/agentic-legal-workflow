@@ -121,7 +121,7 @@ export function generateIntentMessage(intent: UserIntent): string {
  * @returns A message indicating the system is searching
  */
 export function generateThinkingMessage(): string {
-  return "🔍 Searching your documents and rules…"
+  return "Looking for your documents"
 }
 
 /**
@@ -168,8 +168,8 @@ export async function handleIntentStep(
   // Step 3: Show thinking animation
   setThinking(true)
   
-  // Step 4: Simulate "thinking" phase with a delay (2.5 seconds)
-  await new Promise(resolve => setTimeout(resolve, 2500))
+  // Step 4: Simulate "thinking" phase with a delay (4 seconds)
+  await new Promise(resolve => setTimeout(resolve, 4000))
   
   // Step 5: Hide thinking animation
   setThinking(false)
